@@ -1,0 +1,61 @@
+{
+  "icons": {
+    "16": "./gen-assets/icon16.plasmo.png",
+    "32": "./gen-assets/icon32.plasmo.png",
+    "48": "./gen-assets/icon48.plasmo.png",
+    "64": "./gen-assets/icon64.plasmo.png",
+    "128": "./gen-assets/icon128.plasmo.png"
+  },
+  "manifest_version": 3,
+  "action": {
+    "default_icon": {
+      "16": "./gen-assets/icon16.plasmo.png",
+      "32": "./gen-assets/icon32.plasmo.png",
+      "48": "./gen-assets/icon48.plasmo.png",
+      "64": "./gen-assets/icon64.plasmo.png",
+      "128": "./gen-assets/icon128.plasmo.png"
+    },
+    "default_popup": "./popup.html"
+  },
+  "version": "1.0.0",
+  "author": "BV Lang Son",
+  "name": "CareCheck Assistant",
+  "description": "Trợ lý kiểm tra tự động - CareCheck Assistant",
+  "background": {
+    "service_worker": "./static/background/index.ts"
+  },
+  "options_ui": {
+    "page": "./options.html",
+    "open_in_tab": true
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "alarms"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.vncare.vn/*"
+      ],
+      "js": [
+        "..\\contents\\validator.ts"
+      ],
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "*://*.vncare.vn/*"
+      ],
+      "js": [
+        "static\\content.tsx"
+      ],
+      "all_frames": true
+    }
+  ],
+  "host_permissions": [
+    "*://*.vncare.vn/*",
+    "<all_urls>"
+  ]
+}

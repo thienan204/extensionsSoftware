@@ -1,0 +1,40 @@
+{
+  "name": "carecheck-assistant",
+  "displayName": "CareCheck Assistant",
+  "version": "1.0.0",
+  "description": "Trợ lý kiểm tra tự động - CareCheck Assistant",
+  "author": "BV Lang Son",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "package": "plasmo package"
+  },
+  "dependencies": {
+    "@plasmohq/storage": "^1.15.0",
+    "plasmo": "^0.90.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.301",
+    "@types/node": "^22.13.1",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3"
+  },
+  "manifest": {
+    "host_permissions": [
+      "*://*.vncare.vn/*",
+      "<all_urls>"
+    ],
+    "permissions": [
+      "storage",
+      "activeTab",
+      "tabs",
+      "alarms"
+    ]
+  }
+}
