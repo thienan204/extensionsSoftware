@@ -8,13 +8,15 @@ export function TestApiStorage() {
   const [result, setResult] = useState<any>(null);
   const [customJson, setCustomJson] = useState('{\n  "id": 999,\n  "name": "Custom User"\n}');
   const [storageKey, setStorageKey] = useState("ma_dich_vu"); // Biến cho phép người dùng tùy chọn tên Key
+  const [apiUrl, setApiUrl] = useState("https://jsonplaceholder.typicode.com/users/1"); // Cho phép nhập URL tự do
 
   const handleFetchAndSave = async () => {
     if (!storageKey) return alert("Vui lòng nhập Tên biến (Storage Key)!");
+    if (!apiUrl) return alert("Vui lòng nhập đường dẫn API!");
     try {
       setLoading(true);
-      // 1. Gọi API miễn phí (Lấy thông tin User 1)
-      const response = await fetch("https://jsonplaceholder.typicode.com/users/1");
+      // 1. Gọi API
+      const response = await fetch(apiUrl);
       const data = await response.json();
 
       // 2. Lưu vào Storage
@@ -80,6 +82,21 @@ export function TestApiStorage() {
             placeholder="VD: ma_dich_vu"
           />
           <p className="text-xs text-blue-600 mt-2 font-medium">Nhập tên biến (ví dụ: <code>ma_dich_vu</code>) và bấm nút <b>2. Kiểm tra Storage</b> để xem đã có dữ liệu chưa.</p>
+        </div>
+
+        {/* Nhập URL Gọi API */}
+        <div className="bg-indigo-50/50 p-6 rounded-xl border border-indigo-100">
+          <label className="block text-sm font-bold text-indigo-800 mb-2">
+            Đường dẫn API (GET URL) cần gọi:
+          </label>
+          <input 
+            type="text"
+            className="w-full p-3 font-mono text-sm border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
+            value={apiUrl}
+            onChange={(e) => setApiUrl(e.target.value)}
+            placeholder="https://..."
+          />
+          <p className="text-xs text-indigo-600 mt-2 font-medium">API này sẽ được gọi (GET) và toàn bộ dữ liệu trả về sẽ được lưu thẳng vào biến Storage Key ở trên khi bạn bấm nút 1.</p>
         </div>
 
         {/* Nhập JSON tùy chỉnh */}
