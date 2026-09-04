@@ -141,7 +141,7 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
       
       chrome.tabs.sendMessage(tabId, { type: "START_PICKER" }, (res) => {
         if (chrome.runtime.lastError) {
-          console.error("Lỗi gửi message:", chrome.runtime.lastError);
+          console.log("[CareCheck] Không thể kết nối với tab HIS, có thể do tab chưa được F5 sau khi cập nhật Extension.");
           alert("Không thể kết nối với trang HIS. Vui lòng tải lại (F5) tab HIS đó và thử lại!");
         }
       });
@@ -162,7 +162,7 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
       chrome.tabs.sendMessage(tabId, { type: "SCAN_DOM" }, (response) => {
         setIsScanning(false);
         if (chrome.runtime.lastError) {
-          console.error("Lỗi gửi message:", chrome.runtime.lastError);
+          console.log("[CareCheck] Không thể kết nối với tab HIS, có thể do tab chưa được F5 sau khi cập nhật Extension.");
           alert("Không thể kết nối với trang HIS. Vui lòng tải lại (F5) tab HIS đó và thử lại!");
           setShowDomScanner(false);
           return;
@@ -251,6 +251,7 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
           name: "",
           urlPattern: initialData?.urlPattern || "",
           targetSelector: initialData?.selector || "",
+          allowClientToggle: true,
           message: "",
           triggerMode: "REALTIME",
           triggerSelector: "",
@@ -345,6 +346,33 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
               </div>
             </div>
 
+            <div className="flex flex-col gap-2 mt-2">
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox" 
+                  id="allowClientToggle" 
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" 
+                  checked={formData.allowClientToggle !== false} 
+                  onChange={e => setFormData({...formData, allowClientToggle: e.target.checked})} 
+                />
+                <label htmlFor="allowClientToggle" className="text-sm font-medium text-slate-700 select-none cursor-pointer">
+                  Cho phép Bác sĩ (Client) tự Bật/Tắt luật này trên máy cá nhân
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox" 
+                  id="showInClientUI" 
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" 
+                  checked={formData.showInClientUI !== false} 
+                  onChange={e => setFormData({...formData, showInClientUI: e.target.checked})} 
+                />
+                <label htmlFor="showInClientUI" className="text-sm font-medium text-slate-700 select-none cursor-pointer">
+                  Hiển thị luật này trong danh sách ở giao diện Client (Popup)
+                </label>
+              </div>
+            </div>
+
             {formData.triggerMode !== "SYNC_ON_CLICK" && (
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Target Selector (Phần tử sẽ bị hiển thị cảnh báo)</label>
@@ -382,6 +410,8 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
                   <label className="block text-sm font-bold text-slate-800 mb-1">Hành động (Action Type)</label>
                   <select className="w-full px-4 py-2 border border-purple-300 rounded-lg font-medium text-purple-700 bg-purple-50 focus:border-purple-500 focus:ring-1 focus:ring-purple-500" value={formData.actionType || "SHOW_WARNING"} onChange={e => setFormData({...formData, actionType: e.target.value as any})}>
                     <option value="SHOW_WARNING">🚫 Báo Lỗi / Chặn thao tác (Mặc định)</option>
+                    <option value="CONFIRM_WARNING">❓ Cảnh báo & Xác nhận (OK/Cancel)</option>
+                    <option value="SET_VALUE">✍️ Tự động điền giá trị (Auto Fill)</option>
                     <option value="FETCH_API">⬇️ Gọi API & Lưu LocalStorage</option>
                     <option value="CLEAR_STORAGE">🗑️ Xóa LocalStorage</option>
                   </select>
@@ -414,7 +444,7 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
               )}
             </div>
 
-            {formData.triggerMode !== "SYNC_ON_CLICK" && (!formData.actionType || formData.actionType === "SHOW_WARNING") && (
+            {formData.triggerMode !== "SYNC_ON_CLICK" && (!formData.actionType || formData.actionType === "SHOW_WARNING" || formData.actionType === "CONFIRM_WARNING" || formData.actionType === "SET_VALUE") && (
               <>
                 <div className="border border-blue-200 rounded-xl p-5 bg-blue-50/20 shadow-inner">
                   <h3 className="text-sm font-bold text-blue-800 mb-4 flex items-center gap-2">
@@ -424,8 +454,10 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
                   <LogicGroupEditor group={formData.logic} onChange={updateLogicGroup} onPicker={handleStartPicker} onScanner={handleStartDomScanner} />
                 </div>
 
-                <div className="border border-amber-200 rounded-xl p-5 bg-amber-50 shadow-inner mt-4 space-y-4">
-                  <h3 className="text-sm font-bold text-amber-800 flex items-center gap-2">
+                {(!formData.actionType || formData.actionType === "SHOW_WARNING" || formData.actionType === "CONFIRM_WARNING") && (
+                  <>
+                    <div className="border border-amber-200 rounded-xl p-5 bg-amber-50 shadow-inner mt-4 space-y-4">
+                      <h3 className="text-sm font-bold text-amber-800 flex items-center gap-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                     Giao diện Cảnh báo (Warning UI)
                   </h3>
@@ -532,12 +564,35 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-green-900 mb-1">Đường dẫn API (URL gửi POST)</label>
-                    <input type="text" className="w-full px-4 py-2 border border-green-200 rounded-lg font-mono text-sm" value={formData.toastAction?.apiUrl || ""} onChange={e => setFormData({...formData, toastAction: {...(formData.toastAction || { label: "", userSelector: "" }), apiUrl: e.target.value}})} placeholder="VD: https://api.benhvien.vn/request_permission" />
-                    <p className="text-xs text-green-600 mt-1">Dữ liệu POST sẽ có dạng: <code>{`{ "username": "...", "error_value": "Mã gây lỗi" }`}</code></p>
+                      <input type="text" className="w-full px-4 py-2 border border-green-200 rounded-lg font-mono text-sm" value={formData.toastAction?.apiUrl || ""} onChange={e => setFormData({...formData, toastAction: {...(formData.toastAction || { label: "", userSelector: "" }), apiUrl: e.target.value}})} placeholder="VD: https://api.benhvien.vn/request_permission" />
+                      <p className="text-xs text-green-600 mt-1">Dữ liệu POST sẽ có dạng: <code>{`{ "username": "...", "error_value": "Mã gây lỗi" }`}</code></p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+            {formData.actionType === "SET_VALUE" && (
+              <div className="border border-indigo-200 rounded-xl p-5 bg-indigo-50 shadow-inner space-y-4 mt-4">
+                <h3 className="text-sm font-bold text-indigo-800 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                  Cấu hình Tự động điền giá trị (Auto Fill)
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-indigo-900 mb-1">DOM Selector của Ô cần điền</label>
+                    <div className="flex gap-2">
+                      <input type="text" required className="flex-1 px-4 py-2 border border-indigo-200 rounded-lg font-mono text-sm" value={formData.targetSelector || ""} onChange={e => setFormData({...formData, targetSelector: e.target.value})} placeholder="VD: #cboMA_DOITUONG_KCB" />
+                      <button type="button" onClick={() => handleStartPicker(sel => setFormData({...formData, targetSelector: sel}))} className="px-2 py-1 bg-white border border-indigo-200 rounded-lg text-sm text-indigo-700 hover:bg-indigo-100 transition">🎯 Pick</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-indigo-900 mb-1">Giá trị cần điền tự động</label>
+                    <input type="text" required className="w-full px-4 py-2 border border-indigo-200 rounded-lg font-mono text-sm" value={formData.setValueConfig?.value || ""} onChange={e => setFormData({...formData, setValueConfig: { value: e.target.value }})} placeholder="VD: 1.13 hoặc Trái tuyến" />
                   </div>
                 </div>
-              </>
+              </div>
             )}
 
             {formData.actionType === "FETCH_API" && (

@@ -25,10 +25,12 @@ export interface Rule {
   name: string;
   urlPattern: string;
   targetSelector: string;
-  isActive?: boolean; // Cho phép bật/tắt luật
+  isActive?: boolean; // Cho phép bật/tắt luật (Từ phía Admin)
+  allowClientToggle?: boolean; // Cho phép Bác sĩ tự bật/tắt luật này trên máy cá nhân
+  showInClientUI?: boolean; // Cho phép hiển thị ở giao diện Client
   
   // Hành động của Rule (Low-Code)
-  actionType?: "SHOW_WARNING" | "FETCH_API" | "CLEAR_STORAGE";
+  actionType?: "SHOW_WARNING" | "FETCH_API" | "CLEAR_STORAGE" | "CONFIRM_WARNING" | "SET_VALUE";
   
   // --- Cấu hình cho action SHOW_WARNING ---
   logic?: LogicGroup;
@@ -59,6 +61,11 @@ export interface Rule {
     label: string;             // Chữ hiển thị trên nút (VD: Xin cấp quyền)
     apiUrl: string;            // Link API nhận POST
     userSelector?: string;     // Selector để móc tên Bác sĩ trên màn hình
+  };
+
+  // --- Cấu hình cho action SET_VALUE ---
+  setValueConfig?: {
+    value: string; // Giá trị cần điền
   };
 
   triggerMode?: "REALTIME" | "EVENT_BASED" | "SYNC_ON_CLICK" | "ON_LOAD";

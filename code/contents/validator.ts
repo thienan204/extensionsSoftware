@@ -637,6 +637,35 @@ export function evaluateRuleAndUpdateStateSync(rule: Rule, triggerEl?: Element) 
     return false; // Không block UI
   }
 
+  if (action === "SET_VALUE") {
+    if (!rule.logic) return false;
+    const isConditionMet = evaluateGroupSync(rule.logic, rule.id, triggerEl);
+    const previousState = ruleStates.get(rule.id);
+
+    if (isConditionMet && previousState !== true) {
+      if (rule.targetSelector && rule.setValueConfig?.value !== undefined) {
+        const targetEls = document.querySelectorAll(rule.targetSelector);
+        targetEls.forEach(el => {
+          if ((el as HTMLInputElement).value !== rule.setValueConfig!.value) {
+            (el as HTMLInputElement).value = rule.setValueConfig!.value;
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+
+            // Gửi sự kiện cho main_world.ts để kích hoạt jQuery & Select2 của HIS
+            window.dispatchEvent(new CustomEvent("CARECHECK_TRIGGER_JQUERY_CHANGE", {
+              detail: {
+                selector: rule.targetSelector,
+                value: rule.setValueConfig!.value
+              }
+            }));
+          }
+        });
+      }
+    }
+    ruleStates.set(rule.id, isConditionMet);
+    return false;
+  }
+
   if (action === "FETCH_API") {
     if (rule.apiActionConfig?.apiUrl && rule.apiActionConfig?.storageKey) {
       let finalUrl = rule.apiActionConfig.apiUrl;
@@ -824,10 +853,19 @@ async function runEngineEvaluation() {
   try {
     const rules = cachedRules;
     if (!rules || rules.length === 0) return;
+    
+    // Đọc danh sách luật bị tắt bởi Bác sĩ (Client)
+    const clientStorage = await chrome.storage.local.get("client_disabled_rules");
+    const clientDisabledRules = new Set<string>(clientStorage.client_disabled_rules || []);
 
     const currentUrl = window.location.href;
     const activeRules = rules.filter(rule => {
+      // 1. Admin tắt (Global) -> Loại bỏ
       if (rule.isActive === false) return false;
+      
+      // 2. Client tắt (Local) và Admin cho phép tắt -> Loại bỏ
+      if (clientDisabledRules.has(rule.id) && rule.allowClientToggle !== false) return false;
+
       if (!rule.urlPattern) return true;
       try {
         const escapedPattern = rule.urlPattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
@@ -885,10 +923,36 @@ async function runEngineEvaluation() {
         }
       } else if (rule.triggerMode !== "EVENT_BASED") {
         // REALTIME
-        if (action === "SHOW_WARNING") {
+        if (action === "SHOW_WARNING" || action === "CONFIRM_WARNING") {
           if (!rule.logic) continue;
           const isError = evaluateGroupSync(rule.logic, rule.id);
           ruleStates.set(rule.id, isError);
+        } else if (action === "SET_VALUE") {
+          if (!rule.logic) continue;
+          const isConditionMet = evaluateGroupSync(rule.logic, rule.id);
+          const previousState = ruleStates.get(rule.id);
+          
+          if (isConditionMet && previousState !== true) {
+            if (rule.targetSelector && rule.setValueConfig?.value !== undefined) {
+              const targetEls = document.querySelectorAll(rule.targetSelector);
+              targetEls.forEach(el => {
+                if ((el as HTMLInputElement).value !== rule.setValueConfig!.value) {
+                  (el as HTMLInputElement).value = rule.setValueConfig!.value;
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                  
+                  // Gửi sự kiện cho main_world.ts để kích hoạt jQuery & Select2 của HIS
+                  window.dispatchEvent(new CustomEvent("CARECHECK_TRIGGER_JQUERY_CHANGE", {
+                    detail: {
+                      selector: rule.targetSelector,
+                      value: rule.setValueConfig!.value
+                    }
+                  }));
+                }
+              });
+            }
+          }
+          ruleStates.set(rule.id, isConditionMet);
         }
       } else {
         // Gắn sự kiện cho EVENT_BASED rules
@@ -924,8 +988,70 @@ async function runEngineEvaluation() {
                 const handler = (e: Event) => {
                   if (isExecuting) return;
                   
-                  isExecuting = true;
                   const isCheckbox = el.tagName === "INPUT" && (el as HTMLInputElement).type === "checkbox";
+                  const isRow = el.tagName === "TR" || el.tagName === "TD";
+                  const isClickOnButton = e.type === "click" && !isCheckbox && !isRow;
+
+                  // 1. Kiểm tra tức thời (Synchronous Check) chặn Save HIS
+                  if (isClickOnButton) {
+                    if (rule.logic) {
+                      const isErrorSync = evaluateGroupSync(rule.logic, rule.id, el);
+                      if (isErrorSync) {
+                        const msg = rule.warningConfig?.message || rule.message || "Dữ liệu không hợp lệ!";
+                        
+                        if (rule.actionType === "CONFIRM_WARNING") {
+                          // Nếu đã bypass qua modal custom rồi thì bỏ qua không check nữa
+                          if ((window as any).__carecheckBypassedRules?.has(rule.id)) {
+                            return; 
+                          }
+                          
+                          e.preventDefault();
+                          e.stopImmediatePropagation();
+                          
+                          const offendingVal = (window as any).__carecheckOffendingValues?.get(rule.id) || "";
+                          const finalMsg = msg.replace(/\{\{VALUE\}\}/g, offendingVal);
+                          
+                          showCustomConfirmModal(
+                            "CẢNH BÁO KIỂM TRA LỖI!",
+                            finalMsg,
+                            () => {
+                              // Confirm: Đánh dấu đã bypass
+                              if (!(window as any).__carecheckBypassedRules) {
+                                (window as any).__carecheckBypassedRules = new Set<string>();
+                              }
+                              (window as any).__carecheckBypassedRules.add(rule.id);
+                              
+                              // Giả lập lại cú click chuột để đi tiếp
+                              if (typeof jQuery !== 'undefined') {
+                                jQuery(el).trigger('click');
+                              } else {
+                                (el as HTMLElement).click();
+                              }
+                              
+                              // Xóa cờ bypass sau nửa giây
+                              setTimeout(() => {
+                                (window as any).__carecheckBypassedRules.delete(rule.id);
+                              }, 500);
+                            },
+                            () => {
+                              // Cancel: Không làm gì cả
+                            }
+                          );
+                          return;
+                        } else {
+                          // Mặc định SHOW_WARNING (Hard block)
+                          e.preventDefault();
+                          e.stopImmediatePropagation();
+                          evaluateRuleAndUpdateStateSync(rule, el); // Kích hoạt Toast UI
+                          return;
+                        }
+                      }
+                    }
+                    return; // Không có lỗi, cho HIS chạy tiếp
+                  }
+
+                  // 2. Với Checkbox/Row trên lưới, vẫn giữ nguyên cơ chế chờ 50ms để HIS cập nhật DOM
+                  isExecuting = true;
                   const initialState = isCheckbox ? (el as HTMLInputElement).checked : undefined;
                   let attempts = 0;
                   
@@ -941,8 +1067,8 @@ async function runEngineEvaluation() {
                   }, 50);
                 };
 
-                el.addEventListener("click", handler);
-                el.addEventListener("change", handler);
+                el.addEventListener("click", handler, true);
+                el.addEventListener("change", handler, true);
                 
                 // Mở rộng vùng bắt sự kiện: Nếu người dùng cấu hình trigger là checkbox, 
                 // nhưng họ lại click vào cái Row (thẻ <tr>), thì HIS vẫn sẽ check checkbox.
@@ -950,15 +1076,15 @@ async function runEngineEvaluation() {
                 const parentRow = el.closest('tr') || el.closest('.jqgrow');
                 if (parentRow && !parentRow.hasAttribute(`data-bound-trigger-row-${rule.id}`)) {
                   parentRow.setAttribute(`data-bound-trigger-row-${rule.id}`, "true");
-                  parentRow.addEventListener("click", handler);
+                  parentRow.addEventListener("click", handler, true);
                 }
                 
                 if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") {
-                  el.addEventListener("blur", handler);
-                  el.addEventListener("change", handler);
+                  el.addEventListener("blur", handler, true);
+                  el.addEventListener("change", handler, true);
                   el.addEventListener("keydown", (e) => {
                     if ((e as KeyboardEvent).key === "Enter") handler(e);
-                  });
+                  }, true);
                 }
               }
             });
@@ -1045,4 +1171,58 @@ if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", startEngine)
 } else {
   startEngine()
+}
+
+function showCustomConfirmModal(title: string, message: string, onConfirm: () => void, onCancel: () => void) {
+  const modalId = "carecheck-confirm-overlay";
+  const existingModal = document.getElementById(modalId);
+  if (existingModal) return;
+
+  const overlayHTML = `
+    <div id="${modalId}" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 2147483647; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      <div style="background: white; width: 450px; max-width: 90%; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); overflow: hidden; animation: cc-modal-pop 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+        <div style="background: #dc2626; padding: 24px; text-align: center;">
+          <svg style="width: 56px; height: 56px; color: white; margin: 0 auto;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+        </div>
+        <div style="padding: 24px;">
+          <h3 style="margin: 0 0 12px 0; color: #111827; font-size: 1.35rem; font-weight: 700; text-align: center; line-height: 1.2;">${title}</h3>
+          <p style="margin: 0 0 28px 0; color: #4b5563; font-size: 1.05rem; line-height: 1.6; text-align: center; font-weight: 500;">${message}</p>
+          <div style="display: flex; gap: 12px;">
+            <button id="cc-btn-cancel" style="flex: 1; padding: 12px 16px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 8px; font-weight: 600; font-size: 1rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">Hủy bỏ (Sửa lại)</button>
+            <button id="cc-btn-confirm" style="flex: 1; padding: 12px 16px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 1rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">Bỏ qua & Tiếp tục</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  const div = document.createElement('div');
+  div.innerHTML = overlayHTML;
+  document.body.appendChild(div);
+  
+  if (!document.getElementById('cc-modal-style')) {
+    const style = document.createElement('style');
+    style.id = 'cc-modal-style';
+    style.innerHTML = `
+      @keyframes cc-modal-pop {
+        0% { transform: scale(0.9); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      #cc-btn-cancel:hover { background: #e5e7eb !important; border-color: #9ca3af !important; }
+      #cc-btn-cancel:active { background: #d1d5db !important; }
+      #cc-btn-confirm:hover { background: #dc2626 !important; transform: translateY(-1px); box-shadow: 0 4px 6px -1px rgba(239,68,68,0.4); }
+      #cc-btn-confirm:active { background: #b91c1c !important; transform: translateY(0); box-shadow: none; }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  document.getElementById('cc-btn-cancel')!.onclick = () => {
+    div.remove();
+    onCancel();
+  };
+  
+  document.getElementById('cc-btn-confirm')!.onclick = () => {
+    div.remove();
+    onConfirm();
+  };
 }

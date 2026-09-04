@@ -30,6 +30,7 @@
   },
   "permissions": [
     "storage",
+    "scripting",
     "activeTab",
     "tabs",
     "alarms"

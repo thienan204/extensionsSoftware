@@ -94,3 +94,61 @@ Thay vì phải dùng Nút Pick (🎯) để bắt chính xác thẻ `<td...>` c
 
 **Quy tắc ngầm:**
 👉 Hãy luôn dùng **`{{VALUE}}`** khi muốn so sánh dữ liệu nằm ngang hàng (cùng một dòng lưới) với cái Checkbox/Nút bấm mà bạn đang bắt sự kiện!
+
+---
+
+## 5. Kịch bản 4: Ràng buộc chéo 1-1 (Ví dụ: Trái tuyến và ĐT 1.13)
+Đây là bài toán rất thường gặp trên form tiếp nhận/khám bệnh: Bắt buộc 2 trường dữ liệu phải được chọn ĐỒNG THỜI, hoặc để trống ĐỒNG THỜI. Nếu chọn 1 cái mà bỏ quên cái kia thì phải báo lỗi.
+
+**Ví dụ thực tế:** 
+Nếu chọn **Tuyến (Mã: 4)** thì bắt buộc **Đối tượng KCB** phải là **1.13** và ngược lại. Nếu chọn khác đi thì báo lỗi.
+
+**Cách thiết lập:**
+- Bấm **+ Thêm Luật mới** và cấu hình như sau:
+- **Tên quy tắc:** Ràng buộc đồng bộ Tuyến (4) và ĐT KCB (1.13)
+- **URL Pattern:** `*://*.vncare.vn/*/manager.jsp*`
+- **Loại quy tắc:** Sự kiện (Click) hoặc Realtime. Nếu là Sự kiện, hãy điền ID nút Lưu vào ô Nút/Ô kích hoạt.
+- **Hành động:** 🚫 Báo Lỗi / Chặn thao tác
+- **Lời cảnh báo:** Lỗi nhập liệu! Trái tuyến (4) bắt buộc phải đi kèm với Đối tượng KCB 1.13 và ngược lại.
+
+**Trong Cây Điều kiện (Logic Tree), bạn cần thiết lập cấu trúc phân tầng như sau:**
+- Đổi Node Gốc (ngoài cùng) thành **`HOẶC (OR)`**
+- Tạo **Nhóm con 1** - Đổi thành **`VÀ (AND)`**:
+  - Điều kiện 1: Selector `#cboBHYT_LoaiID` | `Bằng (==)` | Giá trị: `4`
+  - Điều kiện 2: Selector `#cboMA_DOITUONG_KCB` | `Khác (!=)` | Giá trị: `1.13`
+- Tạo **Nhóm con 2** - Đổi thành **`VÀ (AND)`**:
+  - Điều kiện 1: Selector `#cboBHYT_LoaiID` | `Khác (!=)` | Giá trị: `4`
+  - Điều kiện 2: Selector `#cboMA_DOITUONG_KCB` | `Bằng (==)` | Giá trị: `1.13`
+
+**💡 Giải thích thuật toán:**
+Hệ thống sẽ dịch cấu trúc trên thành: `(Tuyến=4 VÀ ĐT!=1.13) HOẶC (Tuyến!=4 VÀ ĐT=1.13)`. 
+Bất kỳ khi nào 1 trong 2 vế ngoặc đơn này xảy ra (tức là người dùng chỉ nhập 1 cái mà quên cái kia), hệ thống sẽ lập tức chặn lại và báo lỗi. Nếu nhập đúng cả 2 (hoặc không nhập cả 2), logic sẽ trả về FALSE (Không có lỗi) và cho phép lưu bình thường.
+
+---
+
+## 6. Kịch bản 5: Tự động điền dữ liệu tương hỗ (Auto Fill)
+Thay vì báo lỗi chặn người dùng như Kịch bản 4, bạn có thể thiết lập hệ thống **tự động nhảy giá trị** cho Bác sĩ để tăng tốc độ làm việc.
+
+**Ví dụ thực tế:** 
+Nếu Bác sĩ chọn **Tuyến (Mã: 4)** thì hệ thống tự động nhảy **Đối tượng KCB** sang **1.13**. Và ngược lại, nếu chọn 1.13 thì hệ thống tự động đổi Tuyến sang 4.
+
+**Cách thiết lập:**
+Bạn cần tạo **2 Luật riêng biệt** để hỗ trợ chéo cho nhau.
+
+**Luật 1 (Trái tuyến tự động điền 1.13):**
+- **Tên quy tắc:** Tự điền 1.13 khi chọn Trái tuyến
+- **Loại quy tắc:** Luật Cảnh báo (Quét liên tục REALTIME)
+- **Hành động:** `✍️ Tự động điền giá trị (Auto Fill)`
+- **DOM Selector của Ô cần điền:** `#cboMA_DOITUONG_KCB`
+- **Giá trị cần điền tự động:** `1.13`
+- **Logic Tree:** Gốc `AND` ➡️ Mệnh đề: `#cboBHYT_LoaiID` `Bằng (==)` `4`
+
+**Luật 2 (1.13 tự động điền Trái Tuyến):**
+- **Tên quy tắc:** Tự điền Trái tuyến khi chọn 1.13
+- **Loại quy tắc:** Luật Cảnh báo (Quét liên tục REALTIME)
+- **Hành động:** `✍️ Tự động điền giá trị (Auto Fill)`
+- **DOM Selector của Ô cần điền:** `#cboBHYT_LoaiID`
+- **Giá trị cần điền tự động:** `4`
+- **Logic Tree:** Gốc `AND` ➡️ Mệnh đề: `#cboMA_DOITUONG_KCB` `Bằng (==)` `1.13`
+
+**💡 Lợi ích:** Ngay khi Bác sĩ vừa thao tác đổi giá trị ở 1 trong 2 ô, hệ thống sẽ chớp nhoáng tự động gán giá trị tương ứng vào ô còn lại, đem lại trải nghiệm "ma thuật" và tránh sai sót.
