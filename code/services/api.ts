@@ -72,11 +72,11 @@ export async function getPermissionData(): Promise<any> {
 
 export const defaultSyncSettings: SyncSettings = {
   role: "ADMIN",
-  backendType: "JSONBIN",
+  backendType: "CUSTOM_API",
   binId: "",
   masterKey: "",
-  getUrl: "",
-  postUrl: "",
+  getUrl: "https://htqlbenhvien.bvdklangson.com.vn:201/htqlbenhvien/api/extension-config?key=carecheck_rules",
+  postUrl: "https://htqlbenhvien.bvdklangson.com.vn:201/htqlbenhvien/api/extension-config?key=carecheck_rules",
   apiKey: "",
   syncInterval: 30
 }

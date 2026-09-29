@@ -30,7 +30,7 @@ export interface Rule {
   showInClientUI?: boolean; // Cho phép hiển thị ở giao diện Client
   
   // Hành động của Rule (Low-Code)
-  actionType?: "SHOW_WARNING" | "FETCH_API" | "CLEAR_STORAGE" | "CONFIRM_WARNING" | "SET_VALUE";
+  actionType?: "SHOW_WARNING" | "FETCH_API" | "CLEAR_STORAGE" | "CONFIRM_WARNING" | "SET_VALUE" | "SAVE_TO_STORAGE" | "FETCH_AND_SELECT";
   
   // --- Cấu hình cho action SHOW_WARNING ---
   logic?: LogicGroup;
@@ -49,6 +49,15 @@ export interface Rule {
     paramSelector?: string; // Nơi lấy tham số để nối vào URL (VD: #username)
     storageKey: string;     // Tên biến lưu vào LocalStorage
     clearStorageKeyBeforeFetch?: string; // Tên biến cần xóa trước khi gọi API
+  };
+
+  // --- Cấu hình cho action FETCH_AND_SELECT ---
+  fetchAndSelectConfig?: {
+    apiUrl: string;
+    paramSelector?: string; // Nơi lấy tham số để nối vào URL (VD: #txtSoThe)
+    columns: { key: string; title: string }[]; // Cấu hình các cột hiển thị
+    selectField: string; // Tên trường dữ liệu cần lấy sau khi chọn dòng (VD: SOHENKHA)
+    modalTitle?: string; // Tiêu đề hiển thị trên popup chọn dòng
   };
 
   // --- Cấu hình cho action CLEAR_STORAGE ---

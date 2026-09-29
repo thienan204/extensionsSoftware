@@ -49,6 +49,7 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
   const [domElements, setDomElements] = useState<DomElementInfo[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [domSearchTerm, setDomSearchTerm] = useState("");
+  const [columnsInputText, setColumnsInputText] = useState("");
 
   const handleStartPicker = async (onPicked: (selector: string) => void) => {
     try {
@@ -246,6 +247,7 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
             message: initialData.message || ""
           }
         });
+        setColumnsInputText(initialData.fetchAndSelectConfig?.columns?.map((c: any) => `${c.key}:${c.title}`).join(', ') || "");
       } else {
         setFormData({
           name: "",
@@ -271,6 +273,7 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
             message: ""
           }
         });
+        setColumnsInputText("");
       }
     }
   }, [isOpen, initialData]);
@@ -373,9 +376,9 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
               </div>
             </div>
 
-            {formData.triggerMode !== "SYNC_ON_CLICK" && (
+            {formData.triggerMode !== "SYNC_ON_CLICK" && (!formData.actionType || formData.actionType === "SHOW_WARNING" || formData.actionType === "CONFIRM_WARNING" || formData.actionType === "SET_VALUE") && (
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Target Selector (Phần tử sẽ bị hiển thị cảnh báo)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Target Selector (Phần tử sẽ bị hiển thị cảnh báo/gán giá trị)</label>
                 <div className="flex gap-2">
                   <input type="text" className="flex-1 px-4 py-2 border rounded-lg font-mono text-sm" value={formData.targetSelector} onChange={e => setFormData({...formData, targetSelector: e.target.value})} placeholder="Ví dụ: #btnLuu hoặc .row-patient (Có thể để trống)" />
                   <button type="button" onClick={() => handleStartPicker(sel => setFormData({...formData, targetSelector: sel}))} className="px-3 py-2 bg-slate-100 border rounded-lg text-sm hover:bg-slate-200 transition" title="Bắt phần tử thủ công">🎯 Pick</button>
@@ -412,7 +415,9 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
                     <option value="SHOW_WARNING">🚫 Báo Lỗi / Chặn thao tác (Mặc định)</option>
                     <option value="CONFIRM_WARNING">❓ Cảnh báo & Xác nhận (OK/Cancel)</option>
                     <option value="SET_VALUE">✍️ Tự động điền giá trị (Auto Fill)</option>
+                    <option value="SAVE_TO_STORAGE">💾 Lưu giá trị vào LocalStorage</option>
                     <option value="FETCH_API">⬇️ Gọi API & Lưu LocalStorage</option>
+                    <option value="FETCH_AND_SELECT">📋 Gọi API & Bảng chọn dữ liệu</option>
                     <option value="CLEAR_STORAGE">🗑️ Xóa LocalStorage</option>
                   </select>
                 </div>
@@ -434,6 +439,7 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
                     <div className="flex gap-2">
                       <input type="text" className="flex-1 px-3 py-2 border rounded-lg font-mono text-sm" value={formData.triggerSelector || ""} onChange={e => setFormData({...formData, triggerSelector: e.target.value})} placeholder="VD: #btnLuu, #username" />
                       <button type="button" onClick={() => handleStartPicker(sel => setFormData({...formData, triggerSelector: formData.triggerSelector ? `${formData.triggerSelector}, ${sel}` : sel}))} className="px-2 py-1 bg-slate-100 border rounded-lg text-sm hover:bg-slate-200 transition" title="Chấm nhiều nút (Cộng dồn)">🎯 Pick</button>
+                      <button type="button" onClick={() => handleStartDomScanner(sel => setFormData({...formData, triggerSelector: formData.triggerSelector ? `${formData.triggerSelector}, ${sel}` : sel}))} className="px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-sm hover:bg-blue-100 transition" title="Quét toàn bộ DOM để chọn">🔍 Quét DOM</button>
                     </div>
                   </div>
                   <div>
@@ -444,7 +450,7 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
               )}
             </div>
 
-            {formData.triggerMode !== "SYNC_ON_CLICK" && (!formData.actionType || formData.actionType === "SHOW_WARNING" || formData.actionType === "CONFIRM_WARNING" || formData.actionType === "SET_VALUE") && (
+            {formData.triggerMode !== "SYNC_ON_CLICK" && (
               <>
                 <div className="border border-blue-200 rounded-xl p-5 bg-blue-50/20 shadow-inner">
                   <h3 className="text-sm font-bold text-blue-800 mb-4 flex items-center gap-2">
@@ -589,7 +595,29 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-indigo-900 mb-1">Giá trị cần điền tự động</label>
-                    <input type="text" required className="w-full px-4 py-2 border border-indigo-200 rounded-lg font-mono text-sm" value={formData.setValueConfig?.value || ""} onChange={e => setFormData({...formData, setValueConfig: { value: e.target.value }})} placeholder="VD: 1.13 hoặc Trái tuyến" />
+                    <input type="text" required className="w-full px-4 py-2 border border-indigo-200 rounded-lg font-mono text-sm" value={formData.setValueConfig?.value || ""} onChange={e => setFormData({...formData, setValueConfig: { value: e.target.value }})} placeholder="VD: 1.13 hoặc {{STORAGE:key}}" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {formData.actionType === "SAVE_TO_STORAGE" && (
+              <div className="border border-emerald-200 rounded-xl p-5 bg-emerald-50 shadow-inner space-y-4 mt-4">
+                <h3 className="text-sm font-bold text-emerald-800 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                  Cấu hình Lưu giá trị vào LocalStorage
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-emerald-900 mb-1">Tên biến lưu trữ (Storage Key)</label>
+                    <div className="flex gap-2">
+                      <input type="text" required className="flex-1 px-4 py-2 border border-emerald-200 rounded-lg font-mono text-sm bg-white" value={formData.targetSelector || ""} onChange={e => setFormData({...formData, targetSelector: e.target.value})} placeholder="VD: TEMP_GIOVAO" />
+                    </div>
+                    <p className="text-xs text-emerald-600 mt-1">Sử dụng {'{{'}STORAGE:{formData.targetSelector || 'key'}{'}}'} ở luật khác để lấy ra.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-emerald-900 mb-1">Giá trị cần lưu</label>
+                    <input type="text" required className="w-full px-4 py-2 border border-emerald-200 rounded-lg font-mono text-sm bg-white" value={formData.setValueConfig?.value || ""} onChange={e => setFormData({...formData, setValueConfig: { value: e.target.value }})} placeholder="VD: {{SELECTOR:#id}}" />
                   </div>
                 </div>
               </div>
@@ -610,7 +638,7 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
                     </button>
                   </div>
                   <input type="text" required className="w-full px-4 py-2 border border-purple-200 rounded-lg font-mono text-sm" value={formData.apiActionConfig?.apiUrl || ""} onChange={e => setFormData({...formData, apiActionConfig: {...(formData.apiActionConfig || { paramSelector: "", storageKey: "" }), apiUrl: e.target.value}})} placeholder="Ví dụ: https://.../api/permissions?user=" />
-                  <p className="text-xs text-purple-600 mt-1">API sẽ tự động nối tham số lấy được từ Selector bên dưới vào cuối URL này.</p>
+                  <p className="text-xs text-purple-600 mt-1">API sẽ tự động nối tham số vào cuối URL. Bạn cũng có thể điền trực tiếp tên Selector vào giữa URL (VD: https://.../api?user=#username) để tự động thay thế.</p>
                   
                   {apiTestResult && (
                     <div className="mt-2 p-3 bg-slate-900 rounded-lg overflow-auto max-h-[150px]">
@@ -636,6 +664,62 @@ export function RuleFormModal({ isOpen, onClose, onSave, initialData }: RuleForm
                   <label className="block text-sm font-medium text-purple-900 mb-1">Tên biến cần dọn dẹp trước (Tùy chọn)</label>
                   <input type="text" className="w-full px-4 py-2 border border-purple-200 rounded-lg font-mono text-sm bg-white" value={formData.apiActionConfig?.clearStorageKeyBeforeFetch !== undefined ? formData.apiActionConfig.clearStorageKeyBeforeFetch : (formData.apiActionConfig?.storageKey || "")} onChange={e => setFormData({...formData, apiActionConfig: {...(formData.apiActionConfig || { apiUrl: "", storageKey: "", paramSelector: "" }), clearStorageKeyBeforeFetch: e.target.value}})} placeholder="Để trống sẽ tự động lấy theo Tên biến lưu ở trên" />
                   <p className="text-xs text-purple-600 mt-1">Hệ thống sẽ tự động xóa biến này để làm sạch rác trước khi gọi API (Mặc định là xóa chính biến bạn sắp lưu).</p>
+                </div>
+              </div>
+            )}
+
+            {formData.actionType === "FETCH_AND_SELECT" && (
+              <div className="border border-teal-200 rounded-xl p-5 bg-teal-50 shadow-inner space-y-4">
+                <h3 className="text-sm font-bold text-teal-800 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+                  Cấu hình Gọi API & Bảng chọn dữ liệu
+                </h3>
+                
+                <div>
+                  <label className="block text-sm font-medium text-teal-900 mb-1">Đường dẫn API (URL)</label>
+                  <input type="text" required className="w-full px-4 py-2 border border-teal-200 rounded-lg font-mono text-sm" value={formData.fetchAndSelectConfig?.apiUrl || ""} onChange={e => setFormData({...formData, fetchAndSelectConfig: {...(formData.fetchAndSelectConfig || { paramSelector: "", selectField: "", columns: [] }), apiUrl: e.target.value}})} placeholder="Ví dụ: https://.../api/lich_su?so_the=" />
+                  <p className="text-xs text-teal-600 mt-1">Hệ thống sẽ nối tham số vào cuối URL. Bạn cũng có thể điền trực tiếp tên Selector vào URL (VD: .../api?id=#txtID&limit=10) để tự động thay thế.</p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-teal-900 mb-1">Selector ô chứa tham số</label>
+                    <div className="flex gap-2">
+                      <input type="text" className="flex-1 px-4 py-2 border border-teal-200 rounded-lg font-mono text-sm" value={formData.fetchAndSelectConfig?.paramSelector || ""} onChange={e => setFormData({...formData, fetchAndSelectConfig: {...(formData.fetchAndSelectConfig || { apiUrl: "", selectField: "", columns: [] }), paramSelector: e.target.value}})} placeholder="VD: #txtSoThe" />
+                      <button type="button" onClick={() => handleStartPicker(sel => setFormData({...formData, fetchAndSelectConfig: {...(formData.fetchAndSelectConfig || { apiUrl: "", selectField: "", columns: [] }), paramSelector: sel}}))} className="px-2 py-1 bg-white border border-teal-200 rounded-lg text-sm text-teal-700 hover:bg-teal-100 transition">🎯</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-teal-900 mb-1">Selector Ô nhận giá trị (Đích đến)</label>
+                    <div className="flex gap-2">
+                      <input type="text" required className="flex-1 px-4 py-2 border border-teal-200 rounded-lg font-mono text-sm" value={formData.targetSelector || ""} onChange={e => setFormData({...formData, targetSelector: e.target.value})} placeholder="VD: #txtSoChuyenVien" />
+                      <button type="button" onClick={() => handleStartPicker(sel => setFormData({...formData, targetSelector: sel}))} className="px-2 py-1 bg-white border border-teal-200 rounded-lg text-sm text-teal-700 hover:bg-teal-100 transition">🎯</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-teal-900 mb-1">Tiêu đề Bảng (Tùy chọn)</label>
+                  <input type="text" className="w-full px-4 py-2 border border-teal-200 rounded-lg font-sans text-sm" value={formData.fetchAndSelectConfig?.modalTitle || ""} onChange={e => setFormData({...formData, fetchAndSelectConfig: {...(formData.fetchAndSelectConfig || { apiUrl: "", paramSelector: "", selectField: "", columns: [] }), modalTitle: e.target.value}})} placeholder="VD: Vui lòng chọn ngày hẹn khám" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="block text-sm font-medium text-teal-900 mb-1">Cấu hình Cột Bảng (Tên_trường:Tiêu đề)</label>
+                    <input type="text" className="w-full px-4 py-2 border border-teal-200 rounded-lg font-mono text-sm" value={columnsInputText} onChange={e => {
+                      setColumnsInputText(e.target.value);
+                      const cols = e.target.value.split(',').map(s => {
+                        const parts = s.split(':');
+                        return { key: parts[0]?.trim() || "", title: parts[1]?.trim() || parts[0]?.trim() || "" };
+                      }).filter(c => c.key);
+                      setFormData({...formData, fetchAndSelectConfig: {...(formData.fetchAndSelectConfig || { apiUrl: "", paramSelector: "", selectField: "" }), columns: cols}});
+                    }} placeholder="VD: MABA:Mã Bệnh Án, xml14.SO_GIAYHEN_KL:Số Giấy Hẹn" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-teal-900 mb-1">Trường lấy giá trị (Select Field)</label>
+                    <input type="text" required className="w-full px-4 py-2 border border-teal-200 rounded-lg font-mono text-sm" value={formData.fetchAndSelectConfig?.selectField || ""} onChange={e => setFormData({...formData, fetchAndSelectConfig: {...(formData.fetchAndSelectConfig || { apiUrl: "", paramSelector: "", columns: [] }), selectField: e.target.value}})} placeholder="VD: SOHENKHA hoặc xml14.SO_GIAYHEN_KL" />
+                    <p className="text-[10px] text-teal-600 mt-1">Hệ thống sẽ lấy giá trị này điền vào Ô đích (hỗ trợ object lồng nhau như <code>xml14.SO_GIAYHEN_KL</code>).</p>
+                  </div>
                 </div>
               </div>
             )}

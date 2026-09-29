@@ -292,6 +292,119 @@ function removeWarningUI(ruleId: string) {
   }
 }
 
+function showDataSelectionModal(dataArray: any[], rule: Rule) {
+  if (!Array.isArray(dataArray) || dataArray.length === 0) {
+    console.log(`[CareCheck] FETCH_AND_SELECT: Không có dữ liệu trả về hoặc mảng rỗng.`);
+    alert(`Không tìm thấy dữ liệu nào từ API cho lệnh: ${rule.name}`);
+    return;
+  }
+
+  const modalId = `carecheck-selection-modal-${rule.id}`;
+  document.querySelectorAll(`#${modalId}`).forEach(el => el.remove());
+
+  const wrapper = document.createElement("div");
+  wrapper.id = modalId;
+  wrapper.style.position = "fixed";
+  wrapper.style.inset = "0";
+  wrapper.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+  wrapper.style.backdropFilter = "blur(4px)";
+  wrapper.style.display = "flex";
+  wrapper.style.alignItems = "center";
+  wrapper.style.justifyContent = "center";
+  wrapper.style.zIndex = "2147483647";
+  wrapper.style.fontFamily = "sans-serif";
+
+  const config = rule.fetchAndSelectConfig;
+  if (!config) return;
+
+  const columns = config.columns || [];
+  let tableHeaders = "";
+  for (const col of columns) {
+    tableHeaders += `<th style="padding: 12px; text-align: left; border-bottom: 2px solid #e2e8f0; background: #f8fafc; color: #475569; font-weight: bold;">${col.title}</th>`;
+  }
+  tableHeaders += `<th style="padding: 12px; text-align: center; border-bottom: 2px solid #e2e8f0; background: #f8fafc; color: #475569; font-weight: bold;">Thao tác</th>`;
+
+  let tableRows = "";
+  dataArray.forEach((item, index) => {
+    let rowCells = "";
+    for (const col of columns) {
+      const rawVal = extractFromPath(item, col.key);
+      let val = rawVal !== undefined && rawVal !== null ? String(rawVal) : "";
+      if (/^\d{12}$/.test(val)) {
+        val = `${val.substring(6,8)}/${val.substring(4,6)}/${val.substring(0,4)} ${val.substring(8,10)}:${val.substring(10,12)}`;
+      } else if (/^\d{8}$/.test(val)) {
+        val = `${val.substring(6,8)}/${val.substring(4,6)}/${val.substring(0,4)}`;
+      }
+      rowCells += `<td style="padding: 12px; border-bottom: 1px solid #f1f5f9; color: #1e293b;">${val}</td>`;
+    }
+    const rawSelectVal = extractFromPath(item, config.selectField);
+    const selectVal = rawSelectVal !== undefined && rawSelectVal !== null ? rawSelectVal : "";
+    rowCells += `<td style="padding: 12px; text-align: center; border-bottom: 1px solid #f1f5f9;">
+      <button class="carecheck-select-btn" data-index="${index}" data-val="${selectVal}" style="background: #2563eb; color: white; border: none; padding: 6px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: background 0.2s;">Chọn</button>
+    </td>`;
+    tableRows += `<tr style="transition: background 0.2s;" onmouseover="this.style.backgroundColor='#f1f5f9'" onmouseout="this.style.backgroundColor='transparent'">${rowCells}</tr>`;
+  });
+
+  wrapper.innerHTML = `
+    <div style="background: white; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); width: 90%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; animation: carecheck-slide-in 0.3s ease-out;">
+      <div style="background: #2563eb; color: white; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin: 0; font-size: 18px; font-weight: bold; display: flex; gap: 8px; align-items: center;">
+          <span style="font-size: 24px;">📋</span> ${config.modalTitle || 'Vui lòng chọn một bản ghi'}
+        </h2>
+        <button class="carecheck-close-btn" style="background:none;border:none;color:inherit;cursor:pointer;font-size:20px;opacity:0.8;padding:0;line-height:1;" title="Đóng">✕</button>
+      </div>
+      <div style="padding: 0; flex: 1; overflow: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+          <thead><tr>${tableHeaders}</tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  wrapper.querySelector('.carecheck-close-btn')?.addEventListener('click', () => wrapper.remove());
+
+  wrapper.querySelectorAll('.carecheck-select-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      // LUÔN LUÔN xóa modal ngay lập tức để không bị kẹt (Bất kể trường hợp nào)
+      if (document.body.contains(wrapper)) {
+        wrapper.remove();
+      }
+      document.querySelectorAll(`#${modalId}`).forEach(el => el.remove());
+
+      const targetVal = (e.target as HTMLElement).getAttribute('data-val');
+      
+      // Nếu có đích đến và có giá trị thì mới điền (nếu giá trị rỗng tức là bỏ qua không điền)
+      if (rule.targetSelector && targetVal && targetVal.trim() !== "") {
+        try {
+          const targetEl = document.querySelector(rule.targetSelector) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+          if (targetEl) {
+            targetEl.value = targetVal;
+            // Bắn sự kiện change/input để HIS ghi nhận
+            targetEl.dispatchEvent(new Event("change", { bubbles: true }));
+            targetEl.dispatchEvent(new Event("input", { bubbles: true }));
+            
+            // Bắn custom event cho chắc ăn
+            window.dispatchEvent(new CustomEvent("CARECHECK_TRIGGER_JQUERY_CHANGE", {
+              detail: { selector: rule.targetSelector, value: targetVal }
+            }));
+            
+            console.log(`[CareCheck] FETCH_AND_SELECT: Đã điền giá trị "${targetVal}" vào selector "${rule.targetSelector}"`);
+          } else {
+            console.error(`[CareCheck] FETCH_AND_SELECT: Không tìm thấy ô đích: ${rule.targetSelector}`);
+          }
+        } catch (err) {
+          console.error("[CareCheck] FETCH_AND_SELECT: Lỗi khi điền dữ liệu vào form HIS:", err);
+        }
+      } else {
+         console.log(`[CareCheck] FETCH_AND_SELECT: Bỏ qua không điền do giá trị rỗng hoặc không có targetSelector.`);
+      }
+    });
+  });
+
+  document.body.appendChild(wrapper);
+}
+
 function extractFromPath(obj: any, path: string): any {
   if (!obj || !path) return obj;
   const parts = path.split('.');
@@ -442,7 +555,12 @@ function evaluateConditionSync(node: ConditionNode, ruleId: string, triggerEl?: 
     return false;
   }
 
-  const value = (el as HTMLInputElement).value?.trim() || el.textContent?.trim() || "";
+  let value = "";
+  if ((el as HTMLInputElement).type === "checkbox" || (el as HTMLInputElement).type === "radio") {
+    value = (el as HTMLInputElement).checked ? "true" : "false";
+  } else {
+    value = (el as HTMLInputElement).value?.trim() || el.textContent?.trim() || "";
+  }
   const targetData = getConditionDataSync(node);
   
   const result = performOperatorCheck(node, value, targetData, ruleId);
@@ -623,6 +741,108 @@ if (typeof chrome !== "undefined" && chrome.storage) {
   });
 }
 
+export function resolveDynamicValueSync(val: string, triggerEl?: Element): string {
+  if (!val) return val;
+  if (val.includes("{{SELECTOR:")) {
+    const matches = val.match(/\{\{SELECTOR:([^{}]+)\}\}/g);
+    if (matches) {
+      for (const match of matches) {
+        const selector = match.replace("{{SELECTOR:", "").replace("}}", "").trim();
+        try {
+          let el: Element | null = null;
+          if (triggerEl) {
+            const row = triggerEl.closest('tr') || triggerEl.closest('.row') || triggerEl.parentElement;
+            if (row) {
+              el = row.querySelector(selector);
+            }
+          }
+          if (!el) {
+            el = document.querySelector(selector);
+          }
+          const extracted = el ? ((el as any).value || el.textContent || "").trim() : "";
+          console.log(`[CareCheck DEBUG] resolveDynamicValueSync: Selector="${selector}" -> Element=`, el, `-> Extracted="${extracted}"`);
+          val = val.split(match).join(extracted);
+        } catch (e) {
+          val = val.split(match).join("");
+        }
+      }
+    }
+  }
+  if (val.includes("{{STORAGE:")) {
+    const matches = val.match(/\{\{STORAGE:([^{}]+)\}\}/g);
+    if (matches) {
+      for (const match of matches) {
+        const fullPath = match.replace("{{STORAGE:", "").replace("}}", "").trim();
+        const parts = fullPath.split(".");
+        let extracted = "";
+        if (parts.length > 0) {
+          const rootKey = parts[0];
+          const data = storageCache.get(rootKey);
+          if (data) {
+            const valObj = extractFromPath(data, parts.slice(1).join("."));
+            extracted = valObj != null ? String(valObj) : "";
+          }
+        }
+        val = val.split(match).join(extracted);
+      }
+    }
+  }
+  if (val.includes("{{REGEX:")) {
+    const matches = val.match(/\{\{REGEX:([^}]+)\}\}/g);
+    if (matches) {
+      for (const match of matches) {
+        const regexStr = match.substring(8, match.length - 2);
+        try {
+          const regexParts = regexStr.match(/^\/(.*?)\/([gimsuy]*)$/);
+          let regex;
+          if (regexParts) {
+            regex = new RegExp(regexParts[1], regexParts[2]);
+          } else {
+            regex = new RegExp(regexStr);
+          }
+          const bodyText = document.body.innerText || "";
+          const regMatch = bodyText.match(regex);
+          const extracted = regMatch ? regMatch[1] || regMatch[0] : "";
+          val = val.split(match).join(extracted);
+        } catch (e) {
+          val = val.split(match).join("");
+        }
+      }
+    }
+  }
+  if (val.includes("{{SESSION:")) {
+    const matches = val.match(/\{\{SESSION:([^{}]+)\}\}/g);
+    if (matches) {
+      for (const match of matches) {
+        const fullPath = match.replace("{{SESSION:", "").replace("}}", "").trim();
+        const parts = fullPath.split(".");
+        let extracted = "";
+        if (parts.length > 0) {
+          const rootKey = parts[0];
+          try {
+            const data = sessionStorage.getItem("CARECHECK_" + rootKey);
+            if (data) {
+              if (parts.length > 1) {
+                try {
+                  const json = JSON.parse(data);
+                  const valObj = extractFromPath(json, parts.slice(1).join("."));
+                  extracted = valObj != null ? String(valObj) : "";
+                } catch(e) {
+                  extracted = data;
+                }
+              } else {
+                extracted = data;
+              }
+            }
+          } catch(e) {}
+        }
+        val = val.split(match).join(extracted);
+      }
+    }
+  }
+  return val;
+}
+
 export function evaluateRuleAndUpdateStateSync(rule: Rule, triggerEl?: Element) {
   try {
     console.log(`[CareCheck DEBUG] === BẮT ĐẦU ĐÁNH GIÁ LUẬT: ${rule.name} (${rule.id}) ===`);
@@ -666,6 +886,27 @@ export function evaluateRuleAndUpdateStateSync(rule: Rule, triggerEl?: Element) 
     return false;
   }
 
+  if (action === "SAVE_TO_STORAGE") {
+    const isConditionMet = rule.logic ? evaluateGroupSync(rule.logic, rule.id, triggerEl) : true;
+    const previousState = ruleStates.get(rule.id);
+
+    if (isConditionMet && (rule.triggerMode === "EVENT_BASED" || previousState !== true)) {
+      if (rule.targetSelector && rule.setValueConfig?.value !== undefined) {
+        const finalValue = resolveDynamicValueSync(rule.setValueConfig!.value, triggerEl);
+        try {
+          if (rule.targetSelector.startsWith("SESSION:")) {
+            sessionStorage.setItem("CARECHECK_" + rule.targetSelector.substring(8).trim(), finalValue);
+          } else {
+            localStorage.setItem("CARECHECK_" + rule.targetSelector.trim(), finalValue);
+          }
+          console.log(`[CareCheck DEBUG] SAVE_TO_STORAGE kích hoạt cho luật ${rule.id}. Lưu giá trị: "${finalValue}" vào biến "${rule.targetSelector}"`);
+        } catch(e) {}
+      }
+    }
+    ruleStates.set(rule.id, isConditionMet);
+    return false;
+  }
+
   if (action === "FETCH_API") {
     if (rule.apiActionConfig?.apiUrl && rule.apiActionConfig?.storageKey) {
       let finalUrl = rule.apiActionConfig.apiUrl;
@@ -676,7 +917,17 @@ export function evaluateRuleAndUpdateStateSync(rule: Rule, triggerEl?: Element) 
           const paramEl = document.querySelector(rule.apiActionConfig.paramSelector) as HTMLInputElement;
           if (paramEl && paramEl.value) {
             paramValue = paramEl.value.trim();
-            finalUrl += paramValue;
+            
+            // Xóa khoảng trắng ở các trường mã (đặc biệt là BHYT)
+            if (rule.apiActionConfig.paramSelector.toLowerCase().includes('bhyt') || finalUrl.toLowerCase().includes('bhyt')) {
+              paramValue = paramValue.replace(/\s+/g, '');
+            }
+
+            if (finalUrl.includes(rule.apiActionConfig.paramSelector)) {
+              finalUrl = finalUrl.replace(rule.apiActionConfig.paramSelector, paramValue);
+            } else {
+              finalUrl += paramValue;
+            }
           }
         } catch (e) {
           console.error(`[CareCheck] Invalid paramSelector in API config: ${rule.apiActionConfig.paramSelector}`);
@@ -698,6 +949,10 @@ export function evaluateRuleAndUpdateStateSync(rule: Rule, triggerEl?: Element) 
           saveParamToStorageKey: rule.apiActionConfig.storageKey + "_param",
           paramValue: paramValue
         }, (res) => {
+          if (chrome.runtime.lastError) {
+             console.log("[CareCheck] Lỗi kết nối (Extension context invalidated). Vui lòng tải lại trang (F5).");
+             return;
+          }
           if (res && res.success && res.data) {
             storage.set(rule.apiActionConfig!.storageKey, res.data);
             console.log(`[CareCheck] Đã lấy API xong, kích hoạt quét lại các luật cảnh báo để cập nhật giao diện...`);
@@ -710,10 +965,122 @@ export function evaluateRuleAndUpdateStateSync(rule: Rule, triggerEl?: Element) 
             });
           }
         });
-      } catch (err) {
-        console.error(`[CareCheck] Lỗi khi gọi API qua proxy:`, err);
+      } catch (err: any) {
+        if (String(err).includes("Extension context invalidated") || (err && err.message && err.message.includes("Extension context invalidated"))) {
+          console.log("[CareCheck] Tiện ích vừa được cập nhật. Vui lòng tải lại trang (F5) để sử dụng.");
+        } else {
+          console.error(`[CareCheck] Lỗi khi gọi API qua proxy:`, err);
+        }
       }
     }
+    return false; // Không block UI
+  }
+
+  if (action === "FETCH_AND_SELECT") {
+    const isConditionMet = rule.logic ? evaluateGroupSync(rule.logic, rule.id, triggerEl) : true;
+    const previousState = ruleStates.get(rule.id);
+    
+    if (isConditionMet && (rule.triggerMode === "EVENT_BASED" || previousState !== true)) {
+      if (rule.fetchAndSelectConfig?.apiUrl) {
+        let finalUrl = rule.fetchAndSelectConfig.apiUrl;
+        let paramValue = "";
+        if (rule.fetchAndSelectConfig.paramSelector) {
+          try {
+            const paramEl = document.querySelector(rule.fetchAndSelectConfig.paramSelector) as HTMLInputElement;
+            if (paramEl && paramEl.value) {
+              paramValue = paramEl.value.trim();
+              
+              // Xóa khoảng trắng ở các trường mã (đặc biệt là BHYT)
+              if (rule.fetchAndSelectConfig.paramSelector.toLowerCase().includes('bhyt') || finalUrl.toLowerCase().includes('bhyt')) {
+                paramValue = paramValue.replace(/\s+/g, '');
+              }
+
+              if (finalUrl.includes(rule.fetchAndSelectConfig.paramSelector)) {
+                finalUrl = finalUrl.replace(rule.fetchAndSelectConfig.paramSelector, paramValue);
+              } else {
+                finalUrl += paramValue;
+              }
+            }
+          } catch (e) {
+            console.error(`[CareCheck] Invalid paramSelector in FETCH_AND_SELECT config: ${rule.fetchAndSelectConfig.paramSelector}`);
+          }
+          
+          if (!paramValue) {
+            console.log(`[CareCheck] FETCH_AND_SELECT: Bỏ qua gọi API vì ô tham số (${rule.fetchAndSelectConfig.paramSelector}) đang bị trống.`);
+            return;
+          }
+        }
+        
+        console.log(`[CareCheck] Đang gọi API để FETCH_AND_SELECT: ${finalUrl}`);
+        try {
+          chrome.runtime.sendMessage({ 
+            action: "PROXY_FETCH", 
+            url: finalUrl,
+            saveToStorageKey: "TEMP_FETCH_AND_SELECT",
+            paramValue: paramValue
+          }, (res) => {
+            if (chrome.runtime.lastError) {
+               console.log("[CareCheck] Lỗi kết nối (Extension context invalidated). Vui lòng tải lại trang (F5).");
+               return;
+            }
+            if (res && res.success && res.data) {
+               console.log(`[CareCheck] FETCH_AND_SELECT đã lấy dữ liệu thành công từ URL: ${finalUrl}`, res.data);
+               let dataArray = Array.isArray(res.data) ? res.data : (res.data.data ? res.data.data : null);
+               
+               if (!dataArray || !Array.isArray(dataArray)) {
+                 console.log(`[CareCheck] FETCH_AND_SELECT: API trả về không đúng định dạng mảng dữ liệu! URL: ${finalUrl}`);
+                 return;
+               }
+               
+               // Lọc bỏ các dòng trắng hoàn toàn (tất cả các cột hiển thị đều trống/null hoặc API trả mảng [{}])
+               if (rule.fetchAndSelectConfig.columns && rule.fetchAndSelectConfig.columns.length > 0) {
+                 dataArray = dataArray.filter(item => {
+                   return rule.fetchAndSelectConfig.columns!.some(col => {
+                     const rawVal = extractFromPath(item, col.key);
+                     return rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== "";
+                   });
+                 });
+               }
+               
+               if (dataArray.length === 0) {
+                 console.log(`[CareCheck] FETCH_AND_SELECT: Không có dữ liệu hợp lệ (hoặc không có số hẹn khám)! URL: ${finalUrl}`);
+                 
+                 // Hiển thị một Toast nhỏ cảnh báo ở góc phải
+                 const toast = document.createElement("div");
+                 toast.innerHTML = `⚠️ Không tìm thấy số hẹn khám lần trước (hoặc sai số thẻ BHYT)!`;
+                 toast.style.position = "fixed";
+                 toast.style.bottom = "20px";
+                 toast.style.right = "20px";
+                 toast.style.backgroundColor = "#ef4444";
+                 toast.style.color = "white";
+                 toast.style.padding = "12px 20px";
+                 toast.style.borderRadius = "8px";
+                 toast.style.fontWeight = "bold";
+                 toast.style.zIndex = "9999999";
+                 toast.style.boxShadow = "0 10px 15px -3px rgba(0,0,0,0.3)";
+                 toast.style.animation = "carecheck-slide-in 0.3s ease-out";
+                 document.body.appendChild(toast);
+                 setTimeout(() => toast.remove(), 4000);
+                 
+                 return;
+               }
+
+               showDataSelectionModal(dataArray, rule);
+            } else {
+               console.error(`[CareCheck] FETCH_AND_SELECT: API lỗi hoặc trả về không hợp lệ`, res);
+               alert(`Không thể lấy dữ liệu từ API cho lệnh: ${rule.name}\nURL: ${finalUrl}`);
+            }
+          });
+        } catch (err: any) {
+          if (String(err).includes("Extension context invalidated") || (err && err.message && err.message.includes("Extension context invalidated"))) {
+            console.log("[CareCheck] Tiện ích vừa được cập nhật. Vui lòng tải lại trang (F5) để sử dụng.");
+          } else {
+            console.error(`[CareCheck] Lỗi khi gọi API qua proxy (FETCH_AND_SELECT):`, err);
+          }
+        }
+      }
+    }
+    ruleStates.set(rule.id, isConditionMet);
     return false; // Không block UI
   }
 
@@ -927,37 +1294,59 @@ async function runEngineEvaluation() {
           if (!rule.logic) continue;
           const isError = evaluateGroupSync(rule.logic, rule.id);
           ruleStates.set(rule.id, isError);
-        } else if (action === "SET_VALUE") {
+        } else if (action === "SET_VALUE" || action === "SAVE_TO_STORAGE") {
           if (!rule.logic) continue;
           const isConditionMet = evaluateGroupSync(rule.logic, rule.id);
           const previousState = ruleStates.get(rule.id);
           
-          if (isConditionMet && previousState !== true) {
-            if (rule.targetSelector && rule.setValueConfig?.value !== undefined) {
-              const targetEls = document.querySelectorAll(rule.targetSelector);
-              targetEls.forEach(el => {
-                if ((el as HTMLInputElement).value !== rule.setValueConfig!.value) {
-                  (el as HTMLInputElement).value = rule.setValueConfig!.value;
-                  el.dispatchEvent(new Event('change', { bubbles: true }));
-                  el.dispatchEvent(new Event('input', { bubbles: true }));
-                  
-                  // Gửi sự kiện cho main_world.ts để kích hoạt jQuery & Select2 của HIS
-                  window.dispatchEvent(new CustomEvent("CARECHECK_TRIGGER_JQUERY_CHANGE", {
-                    detail: {
-                      selector: rule.targetSelector,
-                      value: rule.setValueConfig!.value
-                    }
-                  }));
+            if (isConditionMet) {
+              if (action === "SET_VALUE") {
+                if (previousState !== true) {
+                  if (rule.targetSelector && rule.setValueConfig?.value !== undefined) {
+                    const finalValue = resolveDynamicValueSync(rule.setValueConfig!.value, triggerEl);
+                    const targetEls = document.querySelectorAll(rule.targetSelector);
+                    targetEls.forEach(el => {
+                      if ((el as HTMLInputElement).value !== finalValue) {
+                        (el as HTMLInputElement).value = finalValue;
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        
+                        window.dispatchEvent(new CustomEvent("CARECHECK_TRIGGER_JQUERY_CHANGE", {
+                          detail: { selector: rule.targetSelector, value: finalValue }
+                        }));
+                      }
+                    });
+                  }
                 }
-              });
+              } else if (action === "SAVE_TO_STORAGE") {
+                if (rule.targetSelector && rule.setValueConfig?.value !== undefined) {
+                  const finalValue = resolveDynamicValueSync(rule.setValueConfig!.value);
+                  const storageKey = "CARECHECK_" + (rule.targetSelector.startsWith("SESSION:") ? rule.targetSelector.substring(8).trim() : rule.targetSelector.trim());
+                  
+                  try {
+                    let currentSavedValue = rule.targetSelector.startsWith("SESSION:") ? sessionStorage.getItem(storageKey) : localStorage.getItem(storageKey);
+                    // Chỉ save lại nếu giá trị vừa lấy ra KHÁC với giá trị đang lưu trong Storage (hoặc state nhảy từ false lên true)
+                    if (currentSavedValue !== finalValue || previousState !== true) {
+                      if (rule.targetSelector.startsWith("SESSION:")) {
+                        sessionStorage.setItem(storageKey, finalValue);
+                      } else {
+                        localStorage.setItem(storageKey, finalValue);
+                      }
+                      console.log(`[CareCheck DEBUG] SAVE_TO_STORAGE (REALTIME) kích hoạt cho luật ${rule.id}. Lưu giá trị: "${finalValue}" vào biến "${rule.targetSelector}"`);
+                    }
+                  } catch (e) {
+                    console.error("Lỗi khi lưu vào Storage:", e);
+                  }
+                }
+              }
             }
-          }
           ruleStates.set(rule.id, isConditionMet);
         }
       } else {
         // Gắn sự kiện cho EVENT_BASED rules
-        // a. Bắt sự kiện blur/change trên targetSelector
-        if (rule.targetSelector && rule.targetSelector.trim() !== "") {
+        // a. Bắt sự kiện blur/change trên targetSelector (CHỈ áp dụng cho các hành động Cảnh báo, vì các hành động khác targetSelector là Đầu ra/Đích đến)
+        const actionType = rule.actionType || "SHOW_WARNING";
+        if ((actionType === "SHOW_WARNING" || actionType === "CONFIRM_WARNING") && rule.targetSelector && rule.targetSelector.trim() !== "") {
           try {
             const targetEls = document.querySelectorAll(rule.targetSelector);
             targetEls.forEach(el => {
@@ -985,10 +1374,35 @@ async function runEngineEvaluation() {
                 el.setAttribute(`data-bound-trigger-${rule.id}`, "true");
                 
                 let isExecuting = false;
+                let lastTriggerValue: string | undefined = undefined;
+                let lastTriggerChecked: boolean | undefined = undefined;
+                
                 const handler = (e: Event) => {
                   if (isExecuting) return;
                   
                   const isCheckbox = el.tagName === "INPUT" && (el as HTMLInputElement).type === "checkbox";
+                  const currentValue = (el as HTMLInputElement).value || "";
+                  const currentChecked = isCheckbox ? (el as HTMLInputElement).checked : undefined;
+
+                  if (e.type === "blur" && lastTriggerValue === currentValue) {
+                    return; // Chống lặp: Nếu blur mà giá trị không đổi, bỏ qua không gọi API lại
+                  }
+                  if (e.type === "change" || e.type === "blur" || e.type === "input") {
+                    lastTriggerValue = currentValue;
+                  }
+
+                  // Bỏ qua sự kiện click trên thẻ SELECT để tránh kích hoạt luật khi vừa click mở menu dropdown
+                  if (e.type === "click" && el.tagName === "SELECT") {
+                    return;
+                  }
+
+                  if (isCheckbox && e.type === "change") {
+                    // Chống lặp khi click và change đi liền nhau
+                    if (lastTriggerChecked === currentChecked) {
+                      return;
+                    }
+                  }
+
                   const isRow = el.tagName === "TR" || el.tagName === "TD";
                   const isClickOnButton = e.type === "click" && !isCheckbox && !isRow;
 
@@ -1050,19 +1464,31 @@ async function runEngineEvaluation() {
                     return; // Không có lỗi, cho HIS chạy tiếp
                   }
 
-                  // 2. Với Checkbox/Row trên lưới, vẫn giữ nguyên cơ chế chờ 50ms để HIS cập nhật DOM
+                  // 2. Với Checkbox/Row trên lưới, vẫn giữ nguyên cơ chế chờ để HIS cập nhật DOM
                   isExecuting = true;
-                  const initialState = isCheckbox ? (el as HTMLInputElement).checked : undefined;
+                  
+                  if (isCheckbox && e.type === "change") {
+                    // Nếu là sự kiện change thì DOM đã được cập nhật, xử lý ngay
+                    lastTriggerChecked = currentChecked;
+                    evaluateRuleAndUpdateStateSync(rule, el);
+                    setTimeout(() => { isExecuting = false; }, 100);
+                    return;
+                  }
+
+                  const initialState = currentChecked;
                   let attempts = 0;
                   
                   const checkInterval = setInterval(() => {
                     attempts++;
-                    // Luôn luôn poll đợi HIS đổi state, bất kể click vào row hay checkbox.
-                    // Đợi tối đa 5 giây (100 lần * 50ms) cho các mạng chậm
-                    if (!isCheckbox || (el as HTMLInputElement).checked !== initialState || attempts >= 100) {
+                    // Nếu không phải checkbox, xử lý ngay trong tick đầu tiên.
+                    // Nếu là checkbox, đợi tối đa 1 giây (20 * 50ms) để DOM thay đổi
+                    if (!isCheckbox || (el as HTMLInputElement).checked !== initialState || attempts >= 20) {
                       clearInterval(checkInterval);
-                      isExecuting = false;
+                      if (isCheckbox) {
+                        lastTriggerChecked = (el as HTMLInputElement).checked;
+                      }
                       evaluateRuleAndUpdateStateSync(rule, el);
+                      setTimeout(() => { isExecuting = false; }, 100);
                     }
                   }, 50);
                 };

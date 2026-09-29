@@ -152,3 +152,77 @@ Bạn cần tạo **2 Luật riêng biệt** để hỗ trợ chéo cho nhau.
 - **Logic Tree:** Gốc `AND` ➡️ Mệnh đề: `#cboMA_DOITUONG_KCB` `Bằng (==)` `1.13`
 
 **💡 Lợi ích:** Ngay khi Bác sĩ vừa thao tác đổi giá trị ở 1 trong 2 ô, hệ thống sẽ chớp nhoáng tự động gán giá trị tương ứng vào ô còn lại, đem lại trải nghiệm "ma thuật" và tránh sai sót.
+
+---
+
+## 7. Kịch bản 6: Truyền dữ liệu xuyên không giữa các Form (Window LocalStorage)
+Khi bạn cần copy một giá trị từ Form A sang Form B, nhưng ngặt nỗi khi mở Form B lên thì Form A đã bị hệ thống HIS xóa mất tiêu (tiêu hủy DOM). Lúc này bạn không thể dùng Selector thông thường để móc dữ liệu được nữa.
+
+**Giải pháp:** Bắt dữ liệu ngay trước khi Form A bị hủy, giấu nó vào bộ nhớ tạm của trang web, rồi xả nó ra khi Form B xuất hiện.
+
+**Luật 1 (Lưu dữ liệu vào bộ nhớ tạm):**
+- **Tên quy tắc:** Lưu Giờ vào của giường
+- **Loại quy tắc:** Sự kiện (Click...)
+- **Danh sách Nút/Ô:** `#btnKeGiuong` *(Nút kích hoạt việc chuyển form)*
+- **Hành động:** `💾 Lưu giá trị vào LocalStorage`
+- **Tên biến lưu trữ:** `TEMP_GIOVAO`
+- **Giá trị cần lưu:** `{{SELECTOR:#grdBenhNhanGiuong tr.jqgrow[aria-selected="true"] td[aria-describedby="grdBenhNhanGiuong_GIOVAO"]}}`
+
+**Luật 2 (Xả dữ liệu ra Form mới):**
+- **Tên quy tắc:** Tự điền Giờ vào
+- **Loại quy tắc:** Sự kiện (Click...)
+- **Danh sách Nút/Ô:** `#grdDichVu tr.jqgrow` *(Dòng dịch vụ trong Form mới)*
+- **Hành động:** `✍️ Tự động điền giá trị (Auto Fill)`
+- **DOM Selector của Ô cần điền:** `#txtTGCHIDINH`
+- **Giá trị cần điền tự động:** `{{STORAGE:TEMP_GIOVAO}}` *(Hệ thống tự động lôi dữ liệu từ bụng ra để điền)*
+
+**Luật 3 (Dọn rác - Khuyên dùng):**
+- **Tên quy tắc:** Xóa bộ nhớ tạm khi đóng form
+- **Hành động:** `🗑️ Xóa LocalStorage`
+- **Tên biến cần xóa:** `TEMP_GIOVAO` *(Sẽ dọn sạch sẽ để không bị lưu cữu sang bệnh nhân khác)*
+
+> **⚠️ Phân biệt 2 loại Storage:**
+> - Hành động `Lưu giá trị vào LocalStorage` (Lưu biến tạm): Lưu vào bộ nhớ RAM của chính trang HIS (Window LocalStorage). Tốc độ 0ms. Trang "Test API" của Extension sẽ **không thể nhìn thấy** biến này.
+> - Hành động `Gọi API & Lưu LocalStorage`: Lưu vào Ổ cứng của Extension (Chrome Storage). Dùng để lưu danh sách phân quyền dùng chung cho mọi Tab.
+
+---
+
+## 8. Các từ khóa Ma thuật Mở rộng (Advanced Macros)
+
+Ngoài `{{VALUE}}`, hệ thống còn cung cấp các "câu thần chú" cực mạnh cho ô **Giá trị cần điền tự động**:
+
+### ✂️ Cắt chuỗi bằng Regex (`| REGEX:`)
+Nếu màn hình chỉ hiển thị một chuỗi dài (VD: `Thông tin ĐT: Ngày tiếp nhận: 11/09/2026 15:44:08 - Ngày ra viện...`), bạn muốn dùng kéo cắt đúng ngày giờ ra để điền:
+👉 Dùng cú pháp: `{{SELECTOR:#lblThongTinDT | REGEX:([\d]{2}\/[\d]{2}\/[\d]{4}\s+[\d]{2}:[\d]{2}:[\d]{2})}}`
+Hệ thống sẽ tự động bám vào chuỗi văn bản đó, dùng Regex cắt đúng đoạn thời gian (Group 1) và trả về cho bạn.
+
+### 🪟 Xuyên thấu Iframe (`PARENT:`)
+Nếu trang HIS hiển thị Form dưới dạng Iframe (một trang web con bị nhốt trong trang web mẹ), các câu lệnh bình thường sẽ bị giới hạn bên trong Iframe đó.
+👉 Dùng cú pháp: `{{SELECTOR:PARENT:#cboKhoaPhong}}`
+Chữ `PARENT:` ở đầu sẽ cấp quyền cho Extension "nhảy" ra khỏi Iframe con, bay ra ngoài trang web mẹ để bốc dữ liệu mang vào.
+
+---
+
+## 9. Kịch bản 7: Gọi API & Hiển thị Bảng chọn dữ liệu (Table Modal)
+Đây là tính năng cực kỳ mạnh mẽ dành cho các bài toán: Nhập mã -> Văng ra danh sách -> Người dùng chọn 1 dòng -> Tự động điền dữ liệu của dòng đó vào ô khác.
+Ví dụ: Điền số thẻ BHYT -> Chọn "Khám theo giấy hẹn" -> Văng bảng Lịch sử khám -> Bác sĩ click chọn 1 đợt khám -> Tự động bốc Số hẹn khám điền vào form.
+
+**Cách thiết lập:**
+- Bấm **+ Thêm Luật mới** và cấu hình như sau:
+- **Tên quy tắc:** Tự động điền số hẹn khám
+- **Loại quy tắc:** Sự kiện (Click, Nhập text...)
+- **Danh sách Nút/Ô:** `#cboGiayChuyen` *(Nút hoặc Dropdown kích hoạt việc gọi API)*
+- **Hành động:** 📋 `Gọi API & Bảng chọn dữ liệu (FETCH_AND_SELECT)`
+- **Đường dẫn API:** `https://api.benhvien.vn/lich_su_kham?so_the=`
+- **Selector ô chứa tham số:** `#txtSoThe` *(Tiện ích lấy Số thẻ nối vào API)*
+- **Selector Ô nhận giá trị (Đích đến):** `#txtSoChuyenVien` *(Nơi sẽ nhận giá trị sau khi chọn)*
+- **Cấu hình Cột Bảng:** `MABA:Mã Bệnh Án, NGAYVAO:Ngày Vào, SOHENKHA:Số Hẹn Khám` *(Các cột sẽ hiển thị trên Bảng)*
+- **Trường lấy giá trị:** `SOHENKHA` *(Khi click chọn dòng, nó sẽ lấy giá trị của trường SOHENKHA để điền vào Đích đến)*
+
+**Luồng hoạt động:**
+1. Khi có sự thay đổi (Change) ở ô `#cboGiayChuyen`, Tiện ích gọi API.
+2. Nếu API trả về mảng dữ liệu, một Popup Bảng (Table) sẽ văng ra giữa màn hình.
+3. Bác sĩ xem và bấm nút "Chọn" ở dòng tương ứng.
+4. Tiện ích đóng Bảng, lấy SOHENKHA của dòng đó điền tự động vào `#txtSoChuyenVien`.
+
+> **💡 Mẹo:** Trong lúc chưa có API thật, bạn có thể tạo API ảo trên `mocky.io` trả về mảng JSON để điền vào cấu hình và test thử giao diện Bảng!
